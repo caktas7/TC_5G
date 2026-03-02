@@ -1,0 +1,545 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>gNodeB Map</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+
+  <style>
+    html, body { height: 100%; margin: 0; }
+    #map { height: 100%; width: 100%; }
+
+    /* Small floating panel */
+    #panel{
+      position: fixed;
+      top: 10px;
+      left: 10px;
+      z-index: 9999;
+
+      width: 260px;
+      max-width: calc(100vw - 20px);
+
+      background: rgba(255,255,255,0.92);
+      backdrop-filter: blur(6px);
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 12px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.16);
+
+      padding: 10px;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      font-size: 12px;
+    }
+
+    .row { display:flex; gap:8px; align-items:center; margin: 6px 0; flex-wrap: wrap; }
+    .btn {
+      border: 1px solid rgba(0,0,0,0.18);
+      background: #fff;
+      border-radius: 10px;
+      padding: 6px 8px;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 12px;
+    }
+    .btn:active { transform: translateY(1px); }
+
+    #searchBox{
+      flex: 1;
+      min-width: 140px;
+      padding: 6px 8px;
+      border-radius: 10px;
+      border: 1px solid rgba(0,0,0,0.2);
+      font-size: 12px;
+    }
+
+    .crumbs { display:flex; gap:6px; flex-wrap: wrap; align-items:center; margin-top: 6px; }
+    .crumb {
+      border:1px solid rgba(0,0,0,0.15);
+      border-radius:999px;
+      padding:3px 8px;
+      background:#fff;
+      cursor:pointer;
+      user-select:none;
+      font-size:11px;
+    }
+    .crumb.disabled { opacity: 0.55; cursor: default; }
+
+    .kv { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; white-space: pre-wrap; margin-top:6px; }
+
+    /* Plain labels (no highlight) */
+    .site-label, .sector-label{
+      background: rgba(255,255,255,0.95);
+      border: 1px solid rgba(0,0,0,0.25);
+      border-radius: 8px;
+      padding: 3px 6px;
+      font: 700 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      white-space: nowrap;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.12);
+      color:#111;
+    }
+  </style>
+</head>
+
+<body>
+  <div id="map"></div>
+
+  <div id="panel">
+    <div class="row">
+      <input id="searchBox" type="text" placeholder="SITE ID or CLUSTER" />
+      <button id="searchBtn" class="btn">Go</button>
+    </div>
+
+    <div class="row">
+      <label><input id="show3500" type="checkbox" checked> 3500</label>
+      <label><input id="show700" type="checkbox" checked> 700</label>
+    </div>
+
+    <div class="crumbs" id="crumbs"></div>
+    <div id="stats" class="kv">Loading…</div>
+  </div>
+
+  <!-- Must be in same folder -->
+  <script src="./data.js"></script>
+
+  <script>
+    // ===== Fixed settings =====
+    const CLICK_SITE_ZOOM_MIN = 15;
+    const SECTOR_RANGE_M = 500;
+    const SECTOR_WIDTH_DEG = 45;
+    const SECTOR_LABEL_FRACTION = 0.82;
+    const BUBBLE_BOUNDS_PAD = 0.20;
+    const SSV_COLOR = "#6b6b6b";
+
+    const map = L.map('map').setView([39.0, 35.0], 6);
+    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 20,
+      attribution: "&copy; OpenStreetMap contributors"
+    }).addTo(map);
+
+    const bubbleLayer = L.layerGroup().addTo(map);
+    const siteLayer   = L.layerGroup().addTo(map);
+    const sectorLayer = L.layerGroup().addTo(map);
+
+    const COLS = {
+      main: "MAIN REGION",
+      sub: "SUB REGION",
+      cluster: "CLUSTER",
+      site: "SITE ID",
+      lat: "LAT",
+      lon: "LON",
+      band: "BAND",
+      sector: "SECTOR",
+      pci: "PCI",
+      az: "AZIMUTH",
+    };
+
+    const bandColors = { "NR3500": "#1f77b4", "NR700": "#ff7f0e", "_DEFAULT": "#2ca02c" };
+
+    const PALETTE = [
+      "#e41a1c","#377eb8","#4daf4a","#984ea3","#ff7f00","#a65628","#f781bf","#999999",
+      "#66c2a5","#fc8d62","#8da0cb","#e78ac3","#a6d854","#ffd92f","#e5c494","#b3b3b3",
+      "#1b9e77","#d95f02","#7570b3","#e7298a","#66a61e","#e6ab02","#a6761d","#666666",
+      "#8dd3c7","#ffffb3","#bebada","#fb8072","#80b1d3","#fdb462","#b3de69","#fccde5"
+    ];
+
+    function makeColorAssigner() {
+      const m = new Map();
+      return {
+        get: (key) => {
+          if (!m.has(key)) m.set(key, PALETTE[m.size % PALETTE.length]);
+          return m.get(key);
+        },
+        clear: () => m.clear()
+      };
+    }
+
+    const mainColors = makeColorAssigner();
+    const subColors  = makeColorAssigner();
+    const cluColors  = makeColorAssigner();
+
+    function setStats(msg) { document.getElementById("stats").textContent = msg; }
+    function normStr(x) { return String(x ?? "").trim(); }
+    function normBand(x) { return normStr(x).toUpperCase(); }
+
+    if (!window.GNODEB_DATA || !Array.isArray(window.GNODEB_DATA.rows)) {
+      setStats("ERROR: data.js missing/invalid. Generate it with python and keep it in same folder.");
+      throw new Error("GNODEB_DATA missing");
+    }
+
+    let sitesIndex = new Map();
+    let sectorsBySite = new Map();
+    let siteIdToKey = new Map();
+    let clusterToAnyKey = new Map();
+    let drill = { level: "main", main: null, sub: null, cluster: null };
+    let lastSelectedSiteKey = null;
+
+    function siteKey(site, lat, lon) {
+      return `${site}__${lat.toFixed(6)}__${lon.toFixed(6)}`;
+    }
+
+    function shouldShowBand(band) {
+      const b = normBand(band);
+      const s3500 = document.getElementById("show3500").checked;
+      const s700 = document.getElementById("show700").checked;
+      if (b === "NR3500") return s3500;
+      if (b === "NR700") return s700;
+      return true;
+    }
+
+    // Geometry
+    function destPoint(lat, lon, bearingDeg, distanceM) {
+      const R = 6371000;
+      const brng = bearingDeg * Math.PI / 180;
+      const φ1 = lat * Math.PI / 180;
+      const λ1 = lon * Math.PI / 180;
+      const δ = distanceM / R;
+      const φ2 = Math.asin(Math.sin(φ1) * Math.cos(δ) + Math.cos(φ1) * Math.sin(δ) * Math.cos(brng));
+      const λ2 = λ1 + Math.atan2(
+        Math.sin(brng) * Math.sin(δ) * Math.cos(φ1),
+        Math.cos(δ) - Math.sin(φ1) * Math.sin(φ2)
+      );
+      return [φ2 * 180 / Math.PI, λ2 * 180 / Math.PI];
+    }
+
+    function makeFanLatLngs(lat, lon, azimuth, widthDeg, radiusM, steps=14) {
+      const left = azimuth - widthDeg / 2;
+      const right = azimuth + widthDeg / 2;
+      const pts = [];
+      pts.push([lat, lon]);
+      for (let i = 0; i <= steps; i++) {
+        const b = left + (right - left) * (i / steps);
+        pts.push(destPoint(lat, lon, b, radiusM));
+      }
+      return pts;
+    }
+
+    function addLabelAt(latlng, html, className) {
+      const icon = L.divIcon({
+        className: "",
+        html: `<div class="${className}">${html}</div>`,
+        iconSize: [1, 1],
+        iconAnchor: [0, 0]
+      });
+      return L.marker(latlng, { icon, interactive: false });
+    }
+
+    function addConeAndLabel(layer, siteObj, row) {
+      const band = normBand(row[COLS.band]) || "UNKNOWN";
+      const baseColor = bandColors[band] || bandColors["_DEFAULT"];
+      const az = Number(row[COLS.az]);
+
+      const pts = makeFanLatLngs(siteObj.lat, siteObj.lon, az, SECTOR_WIDTH_DEG, SECTOR_RANGE_M, 14);
+      L.polygon(pts, {
+        color: baseColor,
+        weight: 2,
+        opacity: 0.85,
+        fillColor: baseColor,
+        fillOpacity: 0.12,
+        interactive: false
+      }).addTo(layer);
+
+      const pci = row[COLS.pci];
+      const pciText = (pci == null || pci === "" || Number.isNaN(Number(pci))) ? "PCI ?" : `PCI ${Number(pci)}`;
+      const sector = row[COLS.sector];
+      const labelText = `S${sector} | ${pciText} | ${az}°`;
+
+      const labelPos = destPoint(siteObj.lat, siteObj.lon, az, SECTOR_RANGE_M * SECTOR_LABEL_FRACTION);
+      const label = addLabelAt(labelPos, labelText, "sector-label");
+      label.addTo(layer);
+    }
+
+    // Icons
+    function bubbleIcon(color, count, label) {
+      const size = count < 100 ? 44 : count < 500 ? 54 : 62;
+      const safeLabel = (label ?? "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+      const html = `
+        <div style="
+          width:${size}px;height:${size}px;border-radius:50%;
+          background:${color};
+          border:2px solid #fff;
+          box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
+          display:flex;flex-direction:column;align-items:center;justify-content:center;
+          color:#fff;">
+          <div style="font-weight:900;line-height:1;">${count}</div>
+          <div style="font-size:10px;opacity:0.95;max-width:${size-10}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeLabel}</div>
+        </div>`;
+      return L.divIcon({ html, className: "", iconSize: [size, size], iconAnchor: [size/2, size/2] });
+    }
+
+    function siteDotIcon(color) {
+      const html = `
+        <div style="
+          width:12px;height:12px;border-radius:50%;
+          background:${color};
+          border:2px solid #fff;
+          box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
+        "></div>`;
+      return L.divIcon({ html, className: "", iconSize: [16,16], iconAnchor:[8,8] });
+    }
+
+    function centroidForKeys(keys) {
+      let sumLat = 0, sumLon = 0, n = 0;
+      let minLat =  90, maxLat = -90, minLon =  180, maxLon = -180;
+      for (const k of keys) {
+        const s = sitesIndex.get(k);
+        if (!s) continue;
+        sumLat += s.lat; sumLon += s.lon; n++;
+        minLat = Math.min(minLat, s.lat); maxLat = Math.max(maxLat, s.lat);
+        minLon = Math.min(minLon, s.lon); maxLon = Math.max(maxLon, s.lon);
+      }
+      if (!n) return null;
+      return { center: [sumLat/n, sumLon/n], bounds: L.latLngBounds([[minLat,minLon],[maxLat,maxLon]]) };
+    }
+
+    function clearLayers() {
+      bubbleLayer.clearLayers();
+      siteLayer.clearLayers();
+      sectorLayer.clearLayers();
+      lastSelectedSiteKey = null;
+    }
+
+    function setDrill(level, main=null, sub=null, cluster=null) {
+      drill = { level, main, sub, cluster };
+      renderBreadcrumbs();
+      renderCurrentLevel();
+    }
+
+    function renderBreadcrumbs() {
+      const el = document.getElementById("crumbs");
+      el.innerHTML = "";
+      function addCrumb(text, enabled, onClick) {
+        const d = document.createElement("div");
+        d.className = "crumb" + (enabled ? "" : " disabled");
+        d.innerHTML = text;
+        if (enabled) d.addEventListener("click", onClick);
+        el.appendChild(d);
+      }
+      addCrumb("MAIN", drill.level !== "main", () => setDrill("main"));
+      if (drill.main) addCrumb(`M:${drill.main}`, drill.level !== "sub", () => setDrill("sub", drill.main));
+      if (drill.sub) addCrumb(`S:${drill.sub}`, drill.level !== "cluster", () => setDrill("cluster", drill.main, drill.sub));
+      if (drill.cluster && drill.level === "sites") addCrumb(`C:${drill.cluster}`, false, () => {});
+    }
+
+    function renderCurrentLevel() {
+      sectorLayer.clearLayers();
+      lastSelectedSiteKey = null;
+      bubbleLayer.clearLayers();
+      siteLayer.clearLayers();
+
+      if (drill.level === "main") renderMainBubbles();
+      else if (drill.level === "sub") renderSubBubbles();
+      else if (drill.level === "cluster") renderClusterBubblesAndSSV();
+      else renderSitesInCluster();
+    }
+
+    function renderMainBubbles() {
+      const groups = new Map();
+      for (const [key, s] of sitesIndex.entries()) {
+        const k = s.main || "UNKNOWN";
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(key);
+      }
+      let total = 0;
+      for (const [main, keys] of groups.entries()) {
+        total += keys.length;
+        const geo = centroidForKeys(keys);
+        if (!geo) continue;
+        const c = mainColors.get(main);
+        const m = L.marker(geo.center, { icon: bubbleIcon(c, keys.length, main) });
+        m.on("click", () => { map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD)); setDrill("sub", main); });
+        bubbleLayer.addLayer(m);
+      }
+      setStats(`MAIN: ${groups.size} groups | ${total} sites`);
+    }
+
+    function renderSubBubbles() {
+      const groups = new Map();
+      for (const [key, s] of sitesIndex.entries()) {
+        if (s.main !== drill.main) continue;
+        const k = s.sub || "UNKNOWN";
+        if (!groups.has(k)) groups.set(k, []);
+        groups.get(k).push(key);
+      }
+      let total = 0;
+      for (const [sub, keys] of groups.entries()) {
+        total += keys.length;
+        const geo = centroidForKeys(keys);
+        if (!geo) continue;
+        const c = subColors.get(`${drill.main}|${sub}`);
+        const m = L.marker(geo.center, { icon: bubbleIcon(c, keys.length, sub) });
+        m.on("click", () => { map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD)); setDrill("cluster", drill.main, sub); });
+        bubbleLayer.addLayer(m);
+      }
+      setStats(`SUB: ${groups.size} groups | ${total} sites`);
+    }
+
+    function renderClusterBubblesAndSSV() {
+      const groups = new Map();
+      const ssvSites = [];
+      for (const [key, s] of sitesIndex.entries()) {
+        if (s.main !== drill.main || s.sub !== drill.sub) continue;
+        const cl = s.cluster || "SSV";
+        if (cl === "SSV") ssvSites.push(key);
+        else {
+          if (!groups.has(cl)) groups.set(cl, []);
+          groups.get(cl).push(key);
+        }
+      }
+
+      let total = 0;
+      for (const [cluster, keys] of groups.entries()) {
+        total += keys.length;
+        const geo = centroidForKeys(keys);
+        if (!geo) continue;
+        const c = cluColors.get(`${drill.main}|${drill.sub}|${cluster}`);
+        const m = L.marker(geo.center, { icon: bubbleIcon(c, keys.length, cluster) });
+        m.on("click", () => { map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD)); setDrill("sites", drill.main, drill.sub, cluster); });
+        bubbleLayer.addLayer(m);
+      }
+
+      for (const key of ssvSites) {
+        const s = sitesIndex.get(key);
+        if (!s) continue;
+        const m = L.marker([s.lat, s.lon], { icon: siteDotIcon(SSV_COLOR) });
+        m.on("click", () => onSiteClicked(key, SSV_COLOR));
+        bubbleLayer.addLayer(m);
+        total++;
+      }
+
+      setStats(`CLUSTER: ${groups.size} groups | SSV:${ssvSites.length}`);
+    }
+
+    function renderSitesInCluster() {
+      const keys = [];
+      for (const [key, s] of sitesIndex.entries()) {
+        if (s.main === drill.main && s.sub === drill.sub && s.cluster === drill.cluster) keys.push(key);
+      }
+      const geo = centroidForKeys(keys);
+      if (geo) map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD));
+
+      const clusterColor = cluColors.get(`${drill.main}|${drill.sub}|${drill.cluster}`);
+      for (const key of keys) {
+        const s = sitesIndex.get(key);
+        if (!s) continue;
+        const m = L.marker([s.lat, s.lon], { icon: siteDotIcon(clusterColor) });
+        m.on("click", () => onSiteClicked(key, clusterColor));
+        siteLayer.addLayer(m);
+      }
+      setStats(`SITES: ${keys.length} in cluster`);
+    }
+
+    function onSiteClicked(siteKeyVal, markerColor) {
+      const siteObj = sitesIndex.get(siteKeyVal);
+      if (!siteObj) return;
+
+      const targetZoom = Math.max(map.getZoom(), CLICK_SITE_ZOOM_MIN);
+      map.setView([siteObj.lat, siteObj.lon], targetZoom, { animate: true });
+
+      sectorLayer.clearLayers();
+      lastSelectedSiteKey = siteKeyVal;
+
+      // Site label (plain)
+      addLabelAt([siteObj.lat, siteObj.lon], siteObj.site, "site-label").addTo(sectorLayer);
+
+      const rows = sectorsBySite.get(siteKeyVal) || [];
+      let drawn = 0;
+      for (const r of rows) {
+        if (!shouldShowBand(r[COLS.band])) continue;
+        addConeAndLabel(sectorLayer, siteObj, r);
+        drawn++;
+      }
+      setStats(`SITE: ${siteObj.site} | sectors: ${drawn}`);
+    }
+
+    function redrawSelectedSite() {
+      if (!lastSelectedSiteKey) return;
+      const s = sitesIndex.get(lastSelectedSiteKey);
+      if (!s) return;
+      const markerColor = (s.cluster === "SSV") ? SSV_COLOR : cluColors.get(`${s.main}|${s.sub}|${s.cluster}`);
+      onSiteClicked(lastSelectedSiteKey, markerColor);
+    }
+
+    function runSearch() {
+      const q = normStr(document.getElementById("searchBox").value).toLowerCase();
+      if (!q) return;
+
+      if (siteIdToKey.has(q)) {
+        const key = siteIdToKey.get(q);
+        const s = sitesIndex.get(key);
+        if (s.cluster !== "SSV") setDrill("sites", s.main, s.sub, s.cluster);
+        else setDrill("cluster", s.main, s.sub);
+        const markerColor = (s.cluster === "SSV") ? SSV_COLOR : cluColors.get(`${s.main}|${s.sub}|${s.cluster}`);
+        onSiteClicked(key, markerColor);
+        return;
+      }
+
+      if (clusterToAnyKey.has(q)) {
+        const key = clusterToAnyKey.get(q);
+        const s = sitesIndex.get(key);
+        if (s.cluster !== "SSV") setDrill("sites", s.main, s.sub, s.cluster);
+        else setDrill("cluster", s.main, s.sub);
+        return;
+      }
+
+      setStats(`No match: ${q}`);
+    }
+
+    // Build indexes
+    function buildIndexes(rows) {
+      mainColors.clear(); subColors.clear(); cluColors.clear();
+      sitesIndex = new Map();
+      sectorsBySite = new Map();
+      siteIdToKey = new Map();
+      clusterToAnyKey = new Map();
+      clearLayers();
+
+      let validRows = 0;
+      for (const r of rows) {
+        const site = normStr(r[COLS.site]);
+        const lat = Number(r[COLS.lat]);
+        const lon = Number(r[COLS.lon]);
+        const az  = Number(r[COLS.az]);
+        if (!site || !Number.isFinite(lat) || !Number.isFinite(lon) || !Number.isFinite(az)) continue;
+
+        let cluster = normStr(r[COLS.cluster]) || "SSV";
+        r[COLS.cluster] = cluster;
+
+        const key = siteKey(site, lat, lon);
+        if (!sitesIndex.has(key)) {
+          const sObj = {
+            key,
+            site,
+            lat,
+            lon,
+            main: normStr(r[COLS.main]),
+            sub: normStr(r[COLS.sub]),
+            cluster
+          };
+          sitesIndex.set(key, sObj);
+
+          siteIdToKey.set(site.toLowerCase(), key);
+          const clKey = cluster.toLowerCase();
+          if (!clusterToAnyKey.has(clKey)) clusterToAnyKey.set(clKey, key);
+        }
+
+        if (!sectorsBySite.has(key)) sectorsBySite.set(key, []);
+        sectorsBySite.get(key).push(r);
+        validRows++;
+      }
+
+      setDrill("main");
+      setStats(`Loaded rows: ${validRows} | sites: ${sitesIndex.size}`);
+    }
+
+    // UI
+    document.getElementById("searchBtn").addEventListener("click", runSearch);
+    document.getElementById("searchBox").addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
+    document.getElementById("show3500").addEventListener("change", redrawSelectedSite);
+    document.getElementById("show700").addEventListener("change", redrawSelectedSite);
+
+    buildIndexes(window.GNODEB_DATA.rows);
+  </script>
+</body>
+</html>
