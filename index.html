@@ -829,5 +829,26 @@
 
     buildIndexes(window.GNODEB_DATA.rows);
   </script>
+  <script>
+  const PASSWORD = "YourStrongPassword123";  // change this
+
+  const entered = prompt("Enter password:");
+
+  if (entered !== PASSWORD) {
+    document.body.innerHTML = `
+      <div style="
+        height:100vh;
+        display:flex;
+        align-items:center;
+        justify-content:center;
+        font-family:Arial;
+        font-size:18px;">
+        Access Denied
+      </div>
+    `;
+    throw new Error("Wrong password");
+  }
+</script>
 </body>
 </html>
+
