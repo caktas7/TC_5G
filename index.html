@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>gNodeB Map</title>
 
+  <!-- Leaflet -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 
@@ -12,15 +13,17 @@
     html, body { height: 100%; margin: 0; }
     #map { height: 100%; width: 100%; }
 
-    /* Small floating panel */
+    /* Floating panel */
     #panel{
       position: fixed;
       top: 10px;
       left: 10px;
       z-index: 9999;
 
-      width: 260px;
+      width: 380px;
       max-width: calc(100vw - 20px);
+      max-height: calc(100vh - 20px);
+      overflow: auto;
 
       background: rgba(255,255,255,0.92);
       backdrop-filter: blur(6px);
@@ -45,14 +48,37 @@
     }
     .btn:active { transform: translateY(1px); }
 
-    #searchBox{
-      flex: 1;
-      min-width: 140px;
+    .searchBlock { width: 100%; }
+    .label { font-size: 11px; opacity: 0.8; margin-bottom: 2px; }
+
+    input[type="text"]{
+      width: 100%;
       padding: 6px 8px;
       border-radius: 10px;
       border: 1px solid rgba(0,0,0,0.2);
       font-size: 12px;
+      box-sizing: border-box;
     }
+
+    .suggest {
+      border: 1px solid rgba(0,0,0,0.15);
+      border-radius: 10px;
+      background: rgba(255,255,255,0.95);
+      overflow: hidden;
+      margin-top: 4px;
+      display: none;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+    .suggestItem{
+      padding: 7px 9px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      font-size: 12px;
+    }
+    .suggestItem:hover{ background: rgba(0,0,0,0.05); }
+    .suggestItem:last-child{ border-bottom: none; }
+    .muted { opacity: 0.75; font-size: 11px; }
 
     .crumbs { display:flex; gap:6px; flex-wrap: wrap; align-items:center; margin-top: 6px; }
     .crumb {
@@ -68,16 +94,100 @@
 
     .kv { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; white-space: pre-wrap; margin-top:6px; }
 
-    /* Plain labels (no highlight) */
-    .site-label, .sector-label{
+    /* Labels (plain) */
+.sector-label{
+  background: transparent;   /* ✅ no white pill */
+  border: none;              /* ✅ no outline */
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+
+  white-space: nowrap;
+  font: 800 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color:#111;
+
+  /* keep readability on satellite/street */
+  text-shadow:
+    -1px -1px 0 #fff,
+     1px -1px 0 #fff,
+    -1px  1px 0 #fff,
+     1px  1px 0 #fff;
+}
+
+    /* Bubble label wrap (fix cut text) */
+    .bubbleWrap{
+      display:flex; flex-direction:column; align-items:center; justify-content:center;
+      width: 100%; height: 100%;
+      color:#fff;
+      text-align:center;
+      padding: 4px;
+      box-sizing: border-box;
+    }
+    .bubbleCount{ font-weight: 900; line-height: 1; }
+    .bubbleName{
+      font-size: 10px;
+      opacity: 0.95;
+      line-height: 1.1;
+      display: -webkit-box;
+      -webkit-line-clamp: 2; /* 2 lines */
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+      word-break: break-word;
+    }
+
+    /* Panel site list */
+    .sectionTitle{
+      font-weight: 800;
+      margin-top: 8px;
+      margin-bottom: 4px;
+      font-size: 12px;
+    }
+    .siteList{
+      border: 1px solid rgba(0,0,0,0.12);
+      border-radius: 10px;
       background: rgba(255,255,255,0.95);
-      border: 1px solid rgba(0,0,0,0.25);
-      border-radius: 8px;
-      padding: 3px 6px;
-      font: 700 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-      white-space: nowrap;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.12);
-      color:#111;
+      overflow: hidden;
+      max-height: 260px;
+      overflow-y: auto;
+    }
+    .siteRow{
+      padding: 7px 9px;
+      cursor: pointer;
+      border-bottom: 1px solid rgba(0,0,0,0.06);
+      font-size: 12px;
+    }
+    .siteRow:hover{ background: rgba(0,0,0,0.05); }
+    .siteRow:last-child{ border-bottom: none; }
+
+    /* Map site-name marker (vibrant) */
+  .siteNameWrap{
+  display:flex;
+  align-items:center;
+  gap:6px;
+
+  background: transparent;     /* ✅ no white pill */
+  border: none;                /* ✅ no outline */
+  border-radius: 0;
+  padding: 0;
+  box-shadow: none;
+
+  white-space: nowrap;
+  font: 800 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color:#111;
+
+  /* keep readability without a box */
+  text-shadow:
+    -1px -1px 0 #fff,
+     1px -1px 0 #fff,
+    -1px  1px 0 #fff,
+     1px  1px 0 #fff;
+}
+    
+    .dot{
+      width:12px;height:12px;border-radius:50%;
+      border: 2px solid #fff;
+      box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
+      flex: 0 0 auto;
     }
   </style>
 </head>
@@ -87,17 +197,30 @@
 
   <div id="panel">
     <div class="row">
-      <input id="searchBox" type="text" placeholder="SITE ID or CLUSTER" />
-      <button id="searchBtn" class="btn">Go</button>
-    </div>
-
-    <div class="row">
       <label><input id="show3500" type="checkbox" checked> 3500</label>
       <label><input id="show700" type="checkbox" checked> 700</label>
     </div>
 
+    <div class="searchBlock">
+      <div class="label">Search Site</div>
+      <input id="siteSearch" type="text" placeholder="Type SITE ID…" autocomplete="off" />
+      <div id="siteSuggest" class="suggest"></div>
+    </div>
+
+    <div class="searchBlock" style="margin-top:8px;">
+      <div class="label">Search Cluster</div>
+      <input id="clusterSearch" type="text" placeholder="Type CLUSTER…" autocomplete="off" />
+      <div id="clusterSuggest" class="suggest"></div>
+    </div>
+
     <div class="crumbs" id="crumbs"></div>
-    <div id="stats" class="kv">Loading…</div>
+
+    <div id="siteListBlock" style="display:none;">
+      <div class="sectionTitle" id="siteListTitle">Sites</div>
+      <div class="siteList" id="siteList"></div>
+    </div>
+
+    <div id="stats" class="kv">Ready.</div>
   </div>
 
   <!-- Must be in same folder -->
@@ -112,11 +235,21 @@
     const BUBBLE_BOUNDS_PAD = 0.20;
     const SSV_COLOR = "#6b6b6b";
 
-    const map = L.map('map').setView([39.0, 35.0], 6);
-    L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    // "Vibrant" look for site labels when cluster selected
+    const CLUSTER_SITE_COLOR = "#00b7ff";  // bright cyan-blue
+    const OTHER_SITE_COLOR   = "rgba(90,90,90,0.55)";
+
+    const map = L.map('map', { preferCanvas: true }).setView([39.0, 35.0], 6);
+
+    const street = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
       maxZoom: 20,
       attribution: "&copy; OpenStreetMap contributors"
     }).addTo(map);
+
+    const satellite = L.tileLayer(
+      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+      { maxZoom: 20, attribution: "Tiles &copy; Esri" }
+    );
 
     const bubbleLayer = L.layerGroup().addTo(map);
     const siteLayer   = L.layerGroup().addTo(map);
@@ -163,15 +296,22 @@
     function normStr(x) { return String(x ?? "").trim(); }
     function normBand(x) { return normStr(x).toUpperCase(); }
 
+    // data.js provides window.GNODEB_DATA = { rows: [...] }
     if (!window.GNODEB_DATA || !Array.isArray(window.GNODEB_DATA.rows)) {
-      setStats("ERROR: data.js missing/invalid. Generate it with python and keep it in same folder.");
+      setStats("ERROR: data.js not loaded or invalid.");
       throw new Error("GNODEB_DATA missing");
     }
 
-    let sitesIndex = new Map();
-    let sectorsBySite = new Map();
-    let siteIdToKey = new Map();
-    let clusterToAnyKey = new Map();
+    // Indexes
+    let sitesIndex = new Map();      // siteKey -> site object
+    let sectorsBySite = new Map();   // siteKey -> rows
+
+    let siteIdToKey = new Map();     // exact site id -> siteKey
+    let clusterKeyToSites = new Map(); // exact cluster lower -> array of siteKeys
+    let clusterKeyToOneSite = new Map(); // for preserving original casing
+    let allSiteIds = [];            // for suggestions
+    let allClusters = [];           // for suggestions
+
     let drill = { level: "main", main: null, sub: null, cluster: null };
     let lastSelectedSiteKey = null;
 
@@ -246,13 +386,12 @@
       const labelText = `S${sector} | ${pciText} | ${az}°`;
 
       const labelPos = destPoint(siteObj.lat, siteObj.lon, az, SECTOR_RANGE_M * SECTOR_LABEL_FRACTION);
-      const label = addLabelAt(labelPos, labelText, "sector-label");
-      label.addTo(layer);
+      addLabelAt(labelPos, labelText, "sector-label").addTo(layer);
     }
 
-    // Icons
+    // Bubble icon (2 line name)
     function bubbleIcon(color, count, label) {
-      const size = count < 100 ? 44 : count < 500 ? 54 : 62;
+      const size = count < 100 ? 54 : count < 500 ? 64 : 72;
       const safeLabel = (label ?? "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       const html = `
         <div style="
@@ -260,23 +399,62 @@
           background:${color};
           border:2px solid #fff;
           box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
-          display:flex;flex-direction:column;align-items:center;justify-content:center;
-          color:#fff;">
-          <div style="font-weight:900;line-height:1;">${count}</div>
-          <div style="font-size:10px;opacity:0.95;max-width:${size-10}px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${safeLabel}</div>
+        ">
+          <div class="bubbleWrap">
+            <div class="bubbleCount">${count}</div>
+            <div class="bubbleName">${safeLabel}</div>
+          </div>
         </div>`;
       return L.divIcon({ html, className: "", iconSize: [size, size], iconAnchor: [size/2, size/2] });
     }
 
-    function siteDotIcon(color) {
+    // Site “vibrant name on map”
+    function siteNameIcon(dotColor, name) {
+      const safe = String(name ?? "").replace(/</g,"&lt;").replace(/>/g,"&gt;");
       const html = `
-        <div style="
-          width:12px;height:12px;border-radius:50%;
-          background:${color};
-          border:2px solid #fff;
-          box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
-        "></div>`;
-      return L.divIcon({ html, className: "", iconSize: [16,16], iconAnchor:[8,8] });
+        <div class="siteNameWrap">
+          <div class="dot" style="background:${dotColor};"></div>
+          <div>${safe}</div>
+        </div>`;
+      return L.divIcon({ html, className: "", iconSize: [1,1], iconAnchor: [0, 10] });
+    }
+
+    // Panel site list
+    function showSiteList(title, siteKeys) {
+      const block = document.getElementById("siteListBlock");
+      const list = document.getElementById("siteList");
+      const t = document.getElementById("siteListTitle");
+      t.textContent = title;
+
+      list.innerHTML = "";
+      const sorted = siteKeys
+        .map(k => sitesIndex.get(k))
+        .filter(Boolean)
+        .sort((a,b) => a.site.localeCompare(b.site));
+
+      for (const s of sorted) {
+        const div = document.createElement("div");
+        div.className = "siteRow";
+        div.textContent = s.site;
+        div.addEventListener("click", () => {
+          onSiteClicked(s.key, CLUSTER_SITE_COLOR);
+        });
+        list.appendChild(div);
+      }
+      block.style.display = "block";
+    }
+
+    function hideSiteList(){
+      document.getElementById("siteListBlock").style.display = "none";
+      document.getElementById("siteList").innerHTML = "";
+    }
+
+    // Drilldown
+    function clearLayers() {
+      bubbleLayer.clearLayers();
+      siteLayer.clearLayers();
+      sectorLayer.clearLayers();
+      lastSelectedSiteKey = null;
     }
 
     function centroidForKeys(keys) {
@@ -293,13 +471,6 @@
       return { center: [sumLat/n, sumLon/n], bounds: L.latLngBounds([[minLat,minLon],[maxLat,maxLon]]) };
     }
 
-    function clearLayers() {
-      bubbleLayer.clearLayers();
-      siteLayer.clearLayers();
-      sectorLayer.clearLayers();
-      lastSelectedSiteKey = null;
-    }
-
     function setDrill(level, main=null, sub=null, cluster=null) {
       drill = { level, main, sub, cluster };
       renderBreadcrumbs();
@@ -309,17 +480,19 @@
     function renderBreadcrumbs() {
       const el = document.getElementById("crumbs");
       el.innerHTML = "";
+
       function addCrumb(text, enabled, onClick) {
         const d = document.createElement("div");
         d.className = "crumb" + (enabled ? "" : " disabled");
-        d.innerHTML = text;
+        d.textContent = text;
         if (enabled) d.addEventListener("click", onClick);
         el.appendChild(d);
       }
+
       addCrumb("MAIN", drill.level !== "main", () => setDrill("main"));
-      if (drill.main) addCrumb(`M:${drill.main}`, drill.level !== "sub", () => setDrill("sub", drill.main));
-      if (drill.sub) addCrumb(`S:${drill.sub}`, drill.level !== "cluster", () => setDrill("cluster", drill.main, drill.sub));
-      if (drill.cluster && drill.level === "sites") addCrumb(`C:${drill.cluster}`, false, () => {});
+      if (drill.main) addCrumb(`MAIN: ${drill.main}`, drill.level !== "sub", () => setDrill("sub", drill.main));
+      if (drill.sub) addCrumb(`SUB: ${drill.sub}`, drill.level !== "cluster", () => setDrill("cluster", drill.main, drill.sub));
+      if (drill.cluster && drill.level === "sites") addCrumb(`CLUSTER: ${drill.cluster}`, false, () => {});
     }
 
     function renderCurrentLevel() {
@@ -327,6 +500,7 @@
       lastSelectedSiteKey = null;
       bubbleLayer.clearLayers();
       siteLayer.clearLayers();
+      hideSiteList();
 
       if (drill.level === "main") renderMainBubbles();
       else if (drill.level === "sub") renderSubBubbles();
@@ -341,17 +515,19 @@
         if (!groups.has(k)) groups.set(k, []);
         groups.get(k).push(key);
       }
-      let total = 0;
       for (const [main, keys] of groups.entries()) {
-        total += keys.length;
         const geo = centroidForKeys(keys);
         if (!geo) continue;
         const c = mainColors.get(main);
         const m = L.marker(geo.center, { icon: bubbleIcon(c, keys.length, main) });
-        m.on("click", () => { map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD)); setDrill("sub", main); });
+        m.on("click", () => {
+          map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD));
+          setDrill("sub", main);
+          setStats(`MAIN: ${main}`);
+        });
         bubbleLayer.addLayer(m);
       }
-      setStats(`MAIN: ${groups.size} groups | ${total} sites`);
+      setStats("Select MAIN region.");
     }
 
     function renderSubBubbles() {
@@ -362,72 +538,92 @@
         if (!groups.has(k)) groups.set(k, []);
         groups.get(k).push(key);
       }
-      let total = 0;
       for (const [sub, keys] of groups.entries()) {
-        total += keys.length;
         const geo = centroidForKeys(keys);
         if (!geo) continue;
         const c = subColors.get(`${drill.main}|${sub}`);
         const m = L.marker(geo.center, { icon: bubbleIcon(c, keys.length, sub) });
-        m.on("click", () => { map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD)); setDrill("cluster", drill.main, sub); });
+        m.on("click", () => {
+          map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD));
+          setDrill("cluster", drill.main, sub);
+          setStats(`MAIN: ${drill.main}\nSUB: ${sub}`);
+        });
         bubbleLayer.addLayer(m);
       }
-      setStats(`SUB: ${groups.size} groups | ${total} sites`);
+      setStats(`MAIN: ${drill.main}\nSelect SUB region.`);
     }
 
     function renderClusterBubblesAndSSV() {
       const groups = new Map();
-      const ssvSites = [];
+      const ssvKeys = [];
       for (const [key, s] of sitesIndex.entries()) {
         if (s.main !== drill.main || s.sub !== drill.sub) continue;
         const cl = s.cluster || "SSV";
-        if (cl === "SSV") ssvSites.push(key);
+        if (cl === "SSV") ssvKeys.push(key);
         else {
           if (!groups.has(cl)) groups.set(cl, []);
           groups.get(cl).push(key);
         }
       }
 
-      let total = 0;
+      // Cluster bubbles
       for (const [cluster, keys] of groups.entries()) {
-        total += keys.length;
         const geo = centroidForKeys(keys);
         if (!geo) continue;
         const c = cluColors.get(`${drill.main}|${drill.sub}|${cluster}`);
         const m = L.marker(geo.center, { icon: bubbleIcon(c, keys.length, cluster) });
-        m.on("click", () => { map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD)); setDrill("sites", drill.main, drill.sub, cluster); });
+        m.on("click", () => {
+          map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD));
+          setDrill("sites", drill.main, drill.sub, cluster);
+
+          // show BOTH: list + names on map
+          showSiteList(`Cluster: ${cluster}`, keys);
+          showSiteNamesOnMap(keys, CLUSTER_SITE_COLOR);
+
+          setStats(`MAIN: ${drill.main}\nSUB: ${drill.sub}\nCLUSTER: ${cluster}`);
+        });
         bubbleLayer.addLayer(m);
       }
 
-      for (const key of ssvSites) {
+      // ✅ SSV: show site names on the MAP when you are in SUB->CLUSTER screen
+      // (this is what you requested: “see all site names when i click sub regions if they are ssv”)
+      for (const key of ssvKeys) {
         const s = sitesIndex.get(key);
         if (!s) continue;
-        const m = L.marker([s.lat, s.lon], { icon: siteDotIcon(SSV_COLOR) });
-        m.on("click", () => onSiteClicked(key, SSV_COLOR));
-        bubbleLayer.addLayer(m);
-        total++;
+        const marker = L.marker([s.lat, s.lon], { icon: siteNameIcon(SSV_COLOR, s.site) });
+        marker.on("click", () => onSiteClicked(key, SSV_COLOR));
+        siteLayer.addLayer(marker);
       }
 
-      setStats(`CLUSTER: ${groups.size} groups | SSV:${ssvSites.length}`);
+      setStats(`MAIN: ${drill.main}\nSUB: ${drill.sub}\nSelect CLUSTER (SSV names shown).`);
+    }
+
+    // On cluster click we show site names on map + also keep them clickable
+    function showSiteNamesOnMap(siteKeys, color) {
+      siteLayer.clearLayers();
+      for (const k of siteKeys) {
+        const s = sitesIndex.get(k);
+        if (!s) continue;
+        const marker = L.marker([s.lat, s.lon], { icon: siteNameIcon(color, s.site) });
+        marker.on("click", () => onSiteClicked(k, color));
+        siteLayer.addLayer(marker);
+      }
     }
 
     function renderSitesInCluster() {
+      // Show site names on the map for all sites in this cluster + panel list
       const keys = [];
       for (const [key, s] of sitesIndex.entries()) {
         if (s.main === drill.main && s.sub === drill.sub && s.cluster === drill.cluster) keys.push(key);
       }
+
       const geo = centroidForKeys(keys);
       if (geo) map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD));
 
-      const clusterColor = cluColors.get(`${drill.main}|${drill.sub}|${drill.cluster}`);
-      for (const key of keys) {
-        const s = sitesIndex.get(key);
-        if (!s) continue;
-        const m = L.marker([s.lat, s.lon], { icon: siteDotIcon(clusterColor) });
-        m.on("click", () => onSiteClicked(key, clusterColor));
-        siteLayer.addLayer(m);
-      }
-      setStats(`SITES: ${keys.length} in cluster`);
+      showSiteList(`Cluster: ${drill.cluster}`, keys);
+      showSiteNamesOnMap(keys, CLUSTER_SITE_COLOR);
+
+      setStats(`MAIN: ${drill.main}\nSUB: ${drill.sub}\nCLUSTER: ${drill.cluster}`);
     }
 
     function onSiteClicked(siteKeyVal, markerColor) {
@@ -440,9 +636,7 @@
       sectorLayer.clearLayers();
       lastSelectedSiteKey = siteKeyVal;
 
-      // Site label (plain)
-      addLabelAt([siteObj.lat, siteObj.lon], siteObj.site, "site-label").addTo(sectorLayer);
-
+      // cones + labels
       const rows = sectorsBySite.get(siteKeyVal) || [];
       let drawn = 0;
       for (const r of rows) {
@@ -450,40 +644,112 @@
         addConeAndLabel(sectorLayer, siteObj, r);
         drawn++;
       }
-      setStats(`SITE: ${siteObj.site} | sectors: ${drawn}`);
+
+      // no row counting; just show selection
+      setStats(`SITE: ${siteObj.site}\nMAIN: ${siteObj.main}\nSUB: ${siteObj.sub}\nCLUSTER: ${siteObj.cluster}\nSectors shown: ${drawn}`);
     }
 
     function redrawSelectedSite() {
       if (!lastSelectedSiteKey) return;
-      const s = sitesIndex.get(lastSelectedSiteKey);
-      if (!s) return;
-      const markerColor = (s.cluster === "SSV") ? SSV_COLOR : cluColors.get(`${s.main}|${s.sub}|${s.cluster}`);
-      onSiteClicked(lastSelectedSiteKey, markerColor);
+      onSiteClicked(lastSelectedSiteKey, CLUSTER_SITE_COLOR);
     }
 
-    function runSearch() {
-      const q = normStr(document.getElementById("searchBox").value).toLowerCase();
-      if (!q) return;
-
-      if (siteIdToKey.has(q)) {
-        const key = siteIdToKey.get(q);
-        const s = sitesIndex.get(key);
-        if (s.cluster !== "SSV") setDrill("sites", s.main, s.sub, s.cluster);
-        else setDrill("cluster", s.main, s.sub);
-        const markerColor = (s.cluster === "SSV") ? SSV_COLOR : cluColors.get(`${s.main}|${s.sub}|${s.cluster}`);
-        onSiteClicked(key, markerColor);
-        return;
+    // Suggestions UI
+    function renderSuggest(boxEl, items, onPick) {
+      if (!items.length) { boxEl.style.display = "none"; boxEl.innerHTML = ""; return; }
+      boxEl.innerHTML = "";
+      for (const it of items) {
+        const div = document.createElement("div");
+        div.className = "suggestItem";
+        div.innerHTML = `${it.label}<div class="muted">${it.meta || ""}</div>`;
+        div.addEventListener("click", () => onPick(it));
+        boxEl.appendChild(div);
       }
+      boxEl.style.display = "block";
+    }
 
-      if (clusterToAnyKey.has(q)) {
-        const key = clusterToAnyKey.get(q);
-        const s = sitesIndex.get(key);
-        if (s.cluster !== "SSV") setDrill("sites", s.main, s.sub, s.cluster);
-        else setDrill("cluster", s.main, s.sub);
-        return;
+    function filterTop(list, q, limit=30) {
+      const qq = q.toLowerCase();
+      const starts = [];
+      const contains = [];
+      for (const s of list) {
+        const v = s.toLowerCase();
+        if (v.startsWith(qq)) starts.push(s);
+        else if (v.includes(qq)) contains.push(s);
+        if (starts.length + contains.length >= limit) break;
       }
+      return starts.concat(contains).slice(0, limit);
+    }
 
-      setStats(`No match: ${q}`);
+    // Search handlers
+    const siteSearch = document.getElementById("siteSearch");
+    const siteSuggest = document.getElementById("siteSuggest");
+    siteSearch.addEventListener("input", () => {
+      const q = siteSearch.value.trim();
+      if (q.length < 2) { siteSuggest.style.display="none"; siteSuggest.innerHTML=""; return; }
+      const hits = filterTop(allSiteIds, q, 40).map(v => ({ label: v, meta: "SITE ID", value: v }));
+      renderSuggest(siteSuggest, hits, (it) => {
+        siteSearch.value = it.value;
+        siteSuggest.style.display="none";
+        goToSite(it.value);
+      });
+    });
+    siteSearch.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { goToSite(siteSearch.value.trim()); siteSuggest.style.display="none"; }
+    });
+
+    const clusterSearch = document.getElementById("clusterSearch");
+    const clusterSuggest = document.getElementById("clusterSuggest");
+    clusterSearch.addEventListener("input", () => {
+      const q = clusterSearch.value.trim();
+      if (q.length < 2) { clusterSuggest.style.display="none"; clusterSuggest.innerHTML=""; return; }
+      const hits = filterTop(allClusters, q, 40).map(v => ({ label: v, meta: "CLUSTER", value: v }));
+      renderSuggest(clusterSuggest, hits, (it) => {
+        clusterSearch.value = it.value;
+        clusterSuggest.style.display="none";
+        goToCluster(it.value);
+      });
+    });
+    clusterSearch.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") { goToCluster(clusterSearch.value.trim()); clusterSuggest.style.display="none"; }
+    });
+
+    function goToSite(siteId) {
+      const key = siteIdToKey.get(siteId.toLowerCase());
+      if (!key) { setStats(`Site not found: ${siteId}`); return; }
+      const s = sitesIndex.get(key);
+      if (!s) return;
+
+      if (s.cluster !== "SSV") setDrill("sites", s.main, s.sub, s.cluster);
+      else setDrill("cluster", s.main, s.sub);
+
+      // show cluster sites on map if not SSV
+      if (s.cluster !== "SSV") {
+        const keys = clusterKeyToSites.get(s.cluster.toLowerCase()) || [];
+        showSiteList(`Cluster: ${s.cluster}`, keys);
+        showSiteNamesOnMap(keys, CLUSTER_SITE_COLOR);
+      }
+      onSiteClicked(key, CLUSTER_SITE_COLOR);
+    }
+
+    function goToCluster(clusterName) {
+      const clKey = clusterName.toLowerCase();
+      const keys = clusterKeyToSites.get(clKey);
+      if (!keys || !keys.length) { setStats(`Cluster not found: ${clusterName}`); return; }
+
+      // Determine main/sub from any site
+      const anySite = sitesIndex.get(keys[0]);
+      if (!anySite) return;
+
+      setDrill("sites", anySite.main, anySite.sub, anySite.cluster);
+
+      const geo = centroidForKeys(keys);
+      if (geo) map.fitBounds(geo.bounds.pad(BUBBLE_BOUNDS_PAD));
+
+      showSiteList(`Cluster: ${anySite.cluster}`, keys);
+      showSiteNamesOnMap(keys, CLUSTER_SITE_COLOR);
+
+      setStats(`MAIN: ${anySite.main}\nSUB: ${anySite.sub}\nCLUSTER: ${anySite.cluster}`);
     }
 
     // Build indexes
@@ -492,10 +758,10 @@
       sitesIndex = new Map();
       sectorsBySite = new Map();
       siteIdToKey = new Map();
-      clusterToAnyKey = new Map();
+      clusterKeyToSites = new Map();
+      clusterKeyToOneSite = new Map();
       clearLayers();
 
-      let validRows = 0;
       for (const r of rows) {
         const site = normStr(r[COLS.site]);
         const lat = Number(r[COLS.lat]);
@@ -520,24 +786,46 @@
           sitesIndex.set(key, sObj);
 
           siteIdToKey.set(site.toLowerCase(), key);
-          const clKey = cluster.toLowerCase();
-          if (!clusterToAnyKey.has(clKey)) clusterToAnyKey.set(clKey, key);
+
+          const ckey = cluster.toLowerCase();
+          if (!clusterKeyToSites.has(ckey)) clusterKeyToSites.set(ckey, []);
+          clusterKeyToSites.get(ckey).push(key);
+          if (!clusterKeyToOneSite.has(ckey)) clusterKeyToOneSite.set(ckey, key);
         }
 
         if (!sectorsBySite.has(key)) sectorsBySite.set(key, []);
         sectorsBySite.get(key).push(r);
-        validRows++;
       }
 
+      // suggestion lists
+      allSiteIds = Array.from(new Set(Array.from(sitesIndex.values()).map(s => s.site))).sort();
+
+      // show original casing for clusters (SSV included)
+      allClusters = Array.from(clusterKeyToSites.keys()).map(k => {
+        const one = sitesIndex.get(clusterKeyToOneSite.get(k));
+        return one ? one.cluster : k;
+      }).sort((a,b) => a.localeCompare(b));
+
+      // layers control
+      L.control.layers(
+        { "Street": street, "Satellite": satellite },
+        { "Bubbles": bubbleLayer, "Sites": siteLayer, "Sectors": sectorLayer },
+        { collapsed: true }
+      ).addTo(map);
+
       setDrill("main");
-      setStats(`Loaded rows: ${validRows} | sites: ${sitesIndex.size}`);
+      setStats("Ready. Select MAIN region or search.");
     }
 
-    // UI
-    document.getElementById("searchBtn").addEventListener("click", runSearch);
-    document.getElementById("searchBox").addEventListener("keydown", (e) => { if (e.key === "Enter") runSearch(); });
+    // UI toggles
     document.getElementById("show3500").addEventListener("change", redrawSelectedSite);
     document.getElementById("show700").addEventListener("change", redrawSelectedSite);
+
+    // Close suggestion list when clicking map
+    map.on("click", () => {
+      siteSuggest.style.display="none";
+      clusterSuggest.style.display="none";
+    });
 
     buildIndexes(window.GNODEB_DATA.rows);
   </script>
