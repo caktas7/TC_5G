@@ -94,25 +94,26 @@
 
     .kv { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 11px; white-space: pre-wrap; margin-top:6px; }
 
-    /* Labels (plain) */
-.sector-label{
-  background: transparent;   /* ✅ no white pill */
-  border: none;              /* ✅ no outline */
-  border-radius: 0;
-  padding: 0;
-  box-shadow: none;
+    /* ======= STRONGER LABELS (UPDATED) ======= */
+    .sector-label{
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      box-shadow: none;
 
-  white-space: nowrap;
-  font: 800 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color:#111;
+      white-space: nowrap;
+      font: 900 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0.3px;
+      color:#000;
 
-  /* keep readability on satellite/street */
-  text-shadow:
-    -1px -1px 0 #fff,
-     1px -1px 0 #fff,
-    -1px  1px 0 #fff,
-     1px  1px 0 #fff;
-}
+      text-shadow:
+        -2px -2px 0 #fff,
+         2px -2px 0 #fff,
+        -2px  2px 0 #fff,
+         2px  2px 0 #fff,
+         0px  0px 8px rgba(255,255,255,0.95);
+    }
 
     /* Bubble label wrap (fix cut text) */
     .bubbleWrap{
@@ -159,34 +160,40 @@
     .siteRow:hover{ background: rgba(0,0,0,0.05); }
     .siteRow:last-child{ border-bottom: none; }
 
-    /* Map site-name marker (vibrant) */
-  .siteNameWrap{
-  display:flex;
-  align-items:center;
-  gap:6px;
+    /* Map site-name marker (UPDATED: thicker + vibrant) */
+    .siteNameWrap{
+      display:flex;
+      align-items:center;
+      gap:8px;
 
-  background: transparent;     /* ✅ no white pill */
-  border: none;                /* ✅ no outline */
-  border-radius: 0;
-  padding: 0;
-  box-shadow: none;
+      background: transparent;
+      border: none;
+      border-radius: 0;
+      padding: 0;
+      box-shadow: none;
 
-  white-space: nowrap;
-  font: 800 11px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  color:#111;
+      white-space: nowrap;
+      font: 950 14px ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      letter-spacing: 0.4px;
+      color:#000;
 
-  /* keep readability without a box */
-  text-shadow:
-    -1px -1px 0 #fff,
-     1px -1px 0 #fff,
-    -1px  1px 0 #fff,
-     1px  1px 0 #fff;
-}
-    
+      text-shadow:
+        -2px -2px 0 #fff,
+         2px -2px 0 #fff,
+        -2px  2px 0 #fff,
+         2px  2px 0 #fff,
+         0px  0px 8px rgba(255,255,255,0.95);
+    }
+
+    /* Dot (UPDATED: bigger + stronger ring) */
     .dot{
-      width:12px;height:12px;border-radius:50%;
+      width:14px;
+      height:14px;
+      border-radius:50%;
       border: 2px solid #fff;
-      box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
+      box-shadow:
+        0 0 0 2px rgba(0,0,0,0.45),
+        0 0 6px rgba(0,0,0,0.35);
       flex: 0 0 auto;
     }
   </style>
@@ -233,10 +240,10 @@
     const SECTOR_WIDTH_DEG = 45;
     const SECTOR_LABEL_FRACTION = 0.82;
     const BUBBLE_BOUNDS_PAD = 0.20;
-    const SSV_COLOR = "#6b6b6b";
+    const SSV_COLOR = "#222"; // UPDATED (darker for contrast)
 
     // "Vibrant" look for site labels when cluster selected
-    const CLUSTER_SITE_COLOR = "#00b7ff";  // bright cyan-blue
+    const CLUSTER_SITE_COLOR = "#00e5ff";  // UPDATED (brighter cyan)
     const OTHER_SITE_COLOR   = "rgba(90,90,90,0.55)";
 
     const map = L.map('map', { preferCanvas: true }).setView([39.0, 35.0], 6);
@@ -371,12 +378,14 @@
       const az = Number(row[COLS.az]);
 
       const pts = makeFanLatLngs(siteObj.lat, siteObj.lon, az, SECTOR_WIDTH_DEG, SECTOR_RANGE_M, 14);
+
+      // ===== UPDATED: LESS TRANSPARENT / MORE VISIBLE CONES =====
       L.polygon(pts, {
         color: baseColor,
-        weight: 2,
-        opacity: 0.85,
+        weight: 3,        // thicker border
+        opacity: 1.0,     // fully visible border
         fillColor: baseColor,
-        fillOpacity: 0.12,
+        fillOpacity: 0.40, // stronger fill (was 0.12)
         interactive: false
       }).addTo(layer);
 
@@ -585,8 +594,7 @@
         bubbleLayer.addLayer(m);
       }
 
-      // ✅ SSV: show site names on the MAP when you are in SUB->CLUSTER screen
-      // (this is what you requested: “see all site names when i click sub regions if they are ssv”)
+      // SSV: show site names on the MAP when you are in SUB->CLUSTER screen
       for (const key of ssvKeys) {
         const s = sitesIndex.get(key);
         if (!s) continue;
@@ -645,7 +653,6 @@
         drawn++;
       }
 
-      // no row counting; just show selection
       setStats(`SITE: ${siteObj.site}\nMAIN: ${siteObj.main}\nSUB: ${siteObj.sub}\nCLUSTER: ${siteObj.cluster}\nSectors shown: ${drawn}`);
     }
 
@@ -829,27 +836,6 @@
 
     buildIndexes(window.GNODEB_DATA.rows);
   </script>
-  <script>
-  const PASSWORD = "jesus";  // change this
 
-  const entered = prompt("Enter password:");
-
-  if (entered !== PASSWORD) {
-    document.body.innerHTML = `
-      <div style="
-        height:100vh;
-        display:flex;
-        align-items:center;
-        justify-content:center;
-        font-family:Arial;
-        font-size:18px;">
-        Access Denied
-      </div>
-    `;
-    throw new Error("Wrong password");
-  }
-</script>
 </body>
 </html>
-
-
